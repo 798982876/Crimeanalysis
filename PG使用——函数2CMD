@@ -1,0 +1,114 @@
+CREATE OR REPLACE FUNCTION crimestat.f_analysis_cmd(IN uids json,IN w json)
+    RETURNS TABLE(xct numeric, yct numeric)
+    LANGUAGE 'plpgsql'
+    VOLATILE
+    PARALLEL UNSAFE
+    COST 100    ROWS 1000 
+AS $BODY$declare
+Xct numeric;--最小中心点X
+Yct numeric;--最小中心点Y
+
+Xt numeric;--此次中心点X
+Yt numeric;--此次中心点Y
+
+begin 
+--获得坐标 临时表
+create temp table geoxy  on commit drop as 
+(select ST_X(geom)::numeric as x ,ST_Y(geom)::numeric as y 
+ from ( select ST_SetSRID(地理位置::geometry,4326)as geom from crimestat.v_incidents as PA 
+	   where PA.uid in (select json_array_elements::character varying from json_array_elements($1))--待查询记录
+	  ) as D) ; 
+
+--获得权重 临时表
+create temp table W  on commit drop as 
+(select json_array_elements::character varying::numeric as weight from json_array_elements($2));
+
+--原始中心点weighted mean center作为最小距离中心
+select sum(W.weight*geoxy.x)/sum(W.weight) into Xct from geoxy, W;
+select sum(W.weight*geoxy.y)/sum(W.weight) into Yct from geoxy, W;
+--循环计算新的距离中心
+
+loop
+-- 创建临时变量表以千米计算距离，防止exp溢出
+create temp table KI  on commit drop as 
+(select W.weight * exp(-ST_Distance(geography(ST_Point(Xct,Yct)),geography(ST_Point(geoxy.x::numeric,geoxy.y::numeric)))::numeric/1000)::numeric as kit from geoxy,W);
+
+select sum(KI.kit*geoxy.x)/sum(KI.kit) into Xt from KI,geoxy;
+select sum(KI.kit*geoxy.y)/sum(KI.kit) into Yt from KI,geoxy;
+
+if abs(Xt-Xct)<= 0.000001 and abs(Yt-Yct)<= 0.000001 then exit;--循环停止条件
+end if;
+
+Xct := Xt;
+Yct := Yt;
+
+end loop;
+
+return  query select Xct ,Yct;
+
+end;
+$BODY$;
+
+
+--测试
+select crimestat.f_analysis_cmd('[2012051310155900,2012072501042510,2012072813554610,2012071921151800,2012072501042510]'::json,'[1,1,1,1,1]'::json)
+
+
+
+
+
+--服务
+CREATE OR REPLACE FUNCTION crimestat.svr_analysis_cmd(content json,options text[])
+    RETURNS json
+    LANGUAGE 'plpgsql'
+    VOLATILE
+    PARALLEL UNSAFE
+    COST 100
+AS $BODY$declare
+results json;
+uids json;
+w json;
+
+begin
+results = null;--如果当前函数未实现则返回null
+uids = $1->'uid';
+w = $1->'w';
+if uids is not null then
+        if w is null then 
+		 w=array_to_json(array_fill(1,array[json_array_length(uids)]));
+		 results=(select array_to_json(array[Xct,Yct]) from crimestat.f_analysis_cmd(uids::json,w::json) t1);
+						 
+		else
+		results=(select array_to_json(array[Xct,Yct]) from crimestat.f_analysis_cmd(uids::json,w::json) t1);
+	end if;
+end if;
+	return results;
+end;
+
+$BODY$;
+
+select crimestat.svr_analysis_cmd('{"uid":[2012051310155900,2012072501042510,2012072813554610,2012071921151800,2012072501042510],"w":[1,1,1,1,1]}'::json,array[''])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
