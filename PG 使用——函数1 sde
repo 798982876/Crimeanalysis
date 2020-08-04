@@ -29,14 +29,14 @@ select sum(x) / N into centerX from prjxy;
 --获得圆心的Y 
 select sum(y) / N into centerY from prjxy; 
 --获得旋转角度 
-select atan(sum(power((x-centerX),2))-sum(power((y-centerY),2))+sqrt(power((sum(power((x-centerX),2))-sum(power((y-centerY),2))),2)+4*(power(sum((x-centerX)*(y-centerY)),2))) / (2*sum((x-centerX)*(y-centerY))))::numeric 
+select atan((sum(power((x-centerX),2))-sum(power((y-centerY),2))+sqrt(power((sum(power((x-centerX),2))-sum(power((y-centerY),2))),2)+4*(power(sum((x-centerX)*(y-centerY)),2)))) / (2*sum((x-centerX)*(y-centerY))))::numeric 
 into angle from prjxy ; 
 --获得X半轴长度 
-select sqrt(sum(power((((x-centerX)*cos(angle))-((y-centerY)*sin(angle))),2))/(N-2))::numeric into lengthX from prjxy; 
+select sqrt(2*sum(power((((x-centerX)*cos(angle))-((y-centerY)*sin(angle))),2))/(N-2))::numeric into lengthX from prjxy; 
 --获得y半轴长度 
-select sqrt(sum(power((((x-centerX)*sin(angle))-((y-centerY)*cos(angle))),2))/(N-2))::numeric into lengthY from prjxy; 
+select sqrt(2*sum(power((((x-centerX)*sin(angle))+((y-centerY)*cos(angle))),2))/(N-2))::numeric into lengthY from prjxy; 
 --构建轮廓点 
-create temp table geoxy on commit drop as select ST_Transform(ST_SetSRID(ST_Point((centerX+lengthX * cos(radians(seg))*cos(angle)-lengthY*sin(radians(seg))*sin(angle))::numeric , (centerY+lengthY * sin(radians(seg))*cos(angle)+lengthX*cos(radians(seg))*sin(angle))::numeric ),32651),4326) as gpoint
+create temp table geoxy on commit drop as select ST_Transform(ST_SetSRID(ST_Point((centerX+lengthX * cos(radians(seg))*cos(angle)+lengthY*sin(radians(seg))*sin(angle))::numeric , (centerY+lengthY * sin(radians(seg))*cos(angle)-lengthX*cos(radians(seg))*sin(angle))::numeric ),32651),4326) as gpoint
 from (select row_number() over() as seg from crimestat.v_incidents limit 360) as Pt;
 --获得360个轮廓点的度数
 return query SELECT ST_X(gpoint)::numeric as gx,ST_Y(gpoint)::numeric as gy from geoxy;
