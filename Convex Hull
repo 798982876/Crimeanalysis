@@ -1,0 +1,124 @@
+CREATE OR REPLACE FUNCTION crimestat.f_analysis_convexhull(IN uids json)
+    RETURNS TABLE(gx numeric, gy numeric)
+    LANGUAGE 'plpgsql'
+    VOLATILE
+    PARALLEL UNSAFE
+    COST 100    ROWS 1000 
+AS $BODY$declare
+N integer;--点数
+minn integer;--最左下点的标识号
+
+hull integer  array;--数组,存hull 顶点编码
+
+pv integer;--当前点编码
+px numeric;
+py numeric;
+
+qv integer;--下一个点编码
+qx numeric;
+qy numeric;
+
+rv integer;--任一点编码
+rx numeric;
+ry numeric;
+
+val numeric;--计算方向
+minval numeric ;--逆时针最大时的val值
+
+begin
+
+--获得坐标 临时表.以oid即行号作为各点的标识
+create temp table geoxy  on commit drop as
+
+(select row_number() over (order by uid)::integer as oid ,ST_X(geom)::numeric as x ,ST_Y(geom)::numeric as y
+
+from ( select uid,ST_SetSRID(地理位置::geometry,4326)as geom from crimestat.v_incidents as PA
+
+  where PA.uid in (select json_array_elements::character varying from json_array_elements($1))--待查询记录
+
+  ) as D) ;
+
+N := (select count(*) from geoxy);
+
+--获得左下的点即最左边的点中，最下边的点
+create temp table MX  on commit drop as
+(select oid,geoxy.x,geoxy.y from geoxy where geoxy.x = (select min(geoxy.x) from geoxy));
+
+minn := (select MX.oid  from MX where MX.y = (select min(MX.y) from MX));
+
+--从最左端开始，逆时针移动，直到再次到达起点
+pv := minn;
+qv =0;
+
+loop 
+hull = array_append(hull,pv);
+qv = (pv+1)%N;
+
+--计算逆时针角度最大的点为下一个点
+<<loop1>> for rv in select oid from geoxy loop
+qx :=(select geoxy.x from  geoxy where geoxy.oid = qv);
+qy :=(select geoxy.y from geoxy where geoxy.oid = qv);
+
+px :=(select geoxy.x from  geoxy where geoxy.oid = pv);
+py :=(select geoxy.y from geoxy where geoxy.oid = pv);
+
+rx :=(select geoxy.x from  geoxy where geoxy.oid = rv);
+ry :=(select geoxy.y from geoxy where geoxy.oid = rv);
+
+val = (ry-py)*(qx-rx)-(rx-px)*(qy-ry);
+
+if val < 0 then 
+qv = rv;
+end if;
+
+end loop loop1;
+
+pv = qv;
+
+--回到起点结束循环
+if (pv = minn) then
+exit;
+end if;
+
+end loop;
+
+return  query select geoxy.x as gx ,geoxy.y as gy from geoxy where geoxy.oid in (select unnest(hull));
+
+end;
+
+$BODY$;
+
+
+--传输层
+
+CREATE OR REPLACE FUNCTION crimestat.svr_analysis_convexhull(content json,options text[])
+    RETURNS json
+    LANGUAGE 'plpgsql'
+    VOLATILE
+    PARALLEL UNSAFE
+    COST 100
+AS $BODY$declare
+results json;
+profix json;
+
+begin
+results = null;--如果当前函数未实现则返回null
+profix = $1->'uid';
+if $1->>'uid' is not null then
+		results=(select array_to_json(array_agg(array[gx,gy])) from crimestat.f_analysis_convexhull(profix) t1);
+	end if;
+	return results;
+end;
+
+$BODY$;
+
+
+
+--测试
+
+
+select crimestat.f_analysis_convexhull('[2012051310155900,2012072501042510,2012072813554610,2012071921151800,2012072501042510,2012052911561640,2012060511505040,2012061106394910]'::json);
+
+select crimestat.svr_analysis_convexhull('{"uid":[2012051310155900,2012072501042510,2012072813554610,2012071921151800,2012072501042510,2012052911561640,2012060511505040,2012061106394910]}'::json,array['']);
+
+
