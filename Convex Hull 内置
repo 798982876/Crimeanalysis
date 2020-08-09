@@ -1,0 +1,27 @@
+CREATE OR REPLACE FUNCTION crimestat.f_analysis_convexhull(IN uids json)
+    RETURNS TABLE(gx numeric,gy numeric)
+    LANGUAGE 'plpgsql'
+    VOLATILE
+    PARALLEL UNSAFE
+    COST 100    ROWS 1000 
+AS $BODY$
+begin
+ return query 
+ select ST_X(hullp)::numeric as gx ,ST_Y(hullp)::numeric as gy from
+ (SELECT (g.gdump).GEOM as hullp
+  FROM
+    (SELECT
+       ST_DumpPoints(ST_ExteriorRing(ch)) AS gdump from (select ST_ConvexHull(ST_Collect(geo)) as ch from (select 地理位置::geometry as geo from crimestat.v_incidents as PA where PA.uid in (select json_array_elements::character varying from json_array_elements($1)) ) as QQ) as PP 
+    ) AS g) as PT;
+
+
+
+end
+ 
+
+
+
+$BODY$;
+
+--select crimestat.svr_analysis_convexhull('{"uid":[2012051310155900,2012072501042510,2012072813554610,2012071921151800,2012072501042510,2012052911561640,2012060511505040,2012061106394910]}'::json,array['']);
+select crimestat.f_analysis_convexhull('[2012051310155900,2012072501042510,2012072813554610,2012071921151800,2012072501042510,2012052911561640,2012060511505040,2012061106394910]'::json);
