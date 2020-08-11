@@ -1,0 +1,25 @@
+CREATE OR REPLACE FUNCTION crimestat.svr_analysis_centroid(content json,options text[])
+    RETURNS json
+    LANGUAGE 'plpgsql'
+    VOLATILE
+    PARALLEL UNSAFE
+    COST 100
+AS $BODY$declare
+results json;
+sids json;
+
+begin
+results = null;--如果当前函数未实现则返回null
+sids = $1->'sid';
+if sids is not null then
+		raise notice 'sd';
+		results = (select center from crimestat.f_analysis_centroid(sids::json));
+			 		
+end if;
+
+	return results;
+end
+
+$BODY$;
+
+select crimestat.svr_analysis_centroid(''sid':["bbe93cd0-f0c2-454d-a53c-7349bbb88354","4cf45aa5-5487-400d-845a-fd4422276d1d","6835bc89-c4c9-4c82-a46f-11772076e95c"]'::json,array['']);
