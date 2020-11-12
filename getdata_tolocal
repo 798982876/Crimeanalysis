@@ -1,0 +1,42 @@
+#将远程数据库 复制进本地数据库 为调试做准备
+
+#1.本地数据库 创建相同的模式  创建格式一样的表 用于程序的插入 
+#         \d crimestat.incidents
+#        create schema crimestat
+#          CREATE EXTENSION
+# 复制远程数据库的create语句 create数据库
+
+
+import psycopg2
+
+#连接数据库
+conn_fur = psycopg2.connect(database="crimeanalysis", user="crimeanalysis", password="589555", host="172.21.212.225", port="7032")
+conn_loc = psycopg2.connect(database="postgres", user="postgres", password="zhangjie1234", host="127.0.0.1", port="5432")
+print("open database successfully")
+
+#数据游标
+cur_fur = conn_fur.cursor()
+cur_loc = conn_loc.cursor()
+
+#select及插入操作
+cur_fur.execute("select * from crimestat.incidents")
+rows = cur_fur.fetchall()
+for row in rows:
+    # 获取到的时间数据为 datetime.datetime(2012, 5, 13, 10, 15, 59) 将其转为字符串 2012-05-13 10：15：59
+    #tuple元素不可变 将其转换为list，再转换为 tuple
+    row = list(row)
+    row[3] = str(row[3])
+    #空元素处理_替换
+    row = ['' if i == None else i for i in row]
+    row = tuple(row)
+    sql = "insert into crimestat.incidents values"+str(row)
+    cur_loc.execute(sql)
+#提交运行结果
+conn_loc.commit()
+print("插入成功")
+cur_fur.close()
+cur_loc.close()
+conn_fur.close()
+conn_loc.close()
+
+
