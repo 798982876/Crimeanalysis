@@ -1,0 +1,48 @@
+create function crimestat.datacluster(time_extend json, space_extend json, layerth integer)
+returns table(grid_id integer, geohash varchar, crime_time timestamp without time zone, crime_counts integer, grid_zero_row integer, grid_zero_col integer)
+
+as $$
+declare
+start_time varchar;
+end_time varchar;
+west float;
+east float;
+south float;
+north float;
+
+
+
+
+query_space = ST_MakeEnvelope(west,south,east,north,4326)::geometry
+
+
+begin
+start_time := time_extend->'start_time'
+end_time := time_extend->'end_time'
+west := space_extend->'west'
+east := space_extend->'east'
+south := space_extend->'south'
+north := space_extend->'north'
+
+query_space = ST_MakeEnvelope(west,south,east,north,4326)::geometry
+
+--获得数据data 在时间范围内 在空间范围内
+with query_events as (
+	select sid, substring(时间,1,10) as time,glib.f_geodedic2quadtree(ST_X(geometry(地理位置)), ST_Y(geomery(地理位置)), layerth) as geohash 
+	from crimestat.v_incidents
+	where start_time<=substring(时间,1,10) and end_time>=substring(时间,1,10) and  ST_Covers(query_space,geomery(地理位置)))
+
+--依据 geohash 和 time聚类
+with cluster_events as (select time,geohash,count(sid) as counts from query_events group by geohash, time)
+
+--依据geohash计算 从0开始的行列号
+
+
+
+	
+
+
+
+end;
+$$
+language plpgsql;
