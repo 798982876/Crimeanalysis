@@ -1,41 +1,46 @@
 create function crimestat.datacluster(time_extend json, space_extend json, layerth integer)
-returns table(grid_id integer, geohash varchar, crime_time timestamp without time zone, crime_counts integer, grid_zero_row integer, grid_zero_col integer)
+returns table(geohash varchar, crime_time timestamp without time zone, crime_counts integer, grid_zero_row integer, grid_zero_col integer)
 
 as $$
 declare
-start_time varchar;
-end_time varchar;
-west float;
-east float;
-south float;
-north float;
+start_time varchar:= time_extend->'start_time';
+end_time varchar:= time_extend->'end_time';
+west float:= space_extend->'west';
+east float:= space_extend->'east';
+south float:= space_extend->'south';
+north float:= space_extend->'north';
 
 
-
-
-query_space = ST_MakeEnvelope(west,south,east,north,4326)::geometry
-
-
+-- min_r integer;
+-- min_c integer;
+query_space geometry;
 begin
-start_time := time_extend->'start_time'
-end_time := time_extend->'end_time'
-west := space_extend->'west'
-east := space_extend->'east'
-south := space_extend->'south'
-north := space_extend->'north'
 
-query_space = ST_MakeEnvelope(west,south,east,north,4326)::geometry
+query_space := ST_MakeEnvelope(west,south,east,north,4326)::geometry;
 
 --获得数据data 在时间范围内 在空间范围内
-with query_events as (
+create temp table query_events on commit drop as 
+(
 	select sid, substring(时间,1,10) as time,glib.f_geodedic2quadtree(ST_X(geometry(地理位置)), ST_Y(geomery(地理位置)), layerth) as geohash 
 	from crimestat.v_incidents
-	where start_time<=substring(时间,1,10) and end_time>=substring(时间,1,10) and  ST_Covers(query_space,geomery(地理位置)))
+	where start_time<=substring(时间,1,10) 
+	and end_time>=substring(时间,1,10) 
+	and  ST_Covers(query_space,geomery(地理位置)));
 
 --依据 geohash 和 time聚类
-with cluster_events as (select time,geohash,count(sid) as counts from query_events group by geohash, time)
+create temp table cluster_events on commit drop as 
+(select time,geohash,count(sid) as counts from query_events group by geohash, time);
 
 --依据geohash计算 从0开始的行列号
+--获得原始行列号
+create temp table rc_event_t  on commit drop as
+(select time, geohash,counts,(glib.f_quadtree2rowcol(geohash))[1] as row_t,(glib.f_quadtree2rowcol(geohash))[2] as col_t from cluster_events);
+
+--获得从0开始的行列号
+return query select time, geohash,counts, row_t-min(row_t) as row, col_t-min(col_t) as col from rc_event_t;
+
+
+
 
 
 
