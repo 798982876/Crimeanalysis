@@ -28,7 +28,7 @@ begin
 query_space := ST_MakeEnvelope(west,south,east,north,4326)::geometry;
 
 --获得数据data 在时间范围内 在空间范围内
-create temp table query_events on commit drop as 
+create temp table if not exists query_events on commit drop as 
 (
 	select sid, to_char(时间,'YYYYMMDDHH24') as p_time,glib.f_geodetic2quadtree(ST_X(geometry(地理位置))::numeric, ST_Y(geometry(地理位置))::numeric, layerth) as g_geohash 
 	from crimestat.v_incidents
@@ -38,12 +38,12 @@ create temp table query_events on commit drop as
 and  ST_Covers(query_space,geometry(地理位置)));
 
 --依据 geohash 和 time聚类
- create temp table cluster_events on commit drop as 
+ create temp table if not exists cluster_events on commit drop as 
 (select query_events.p_time,query_events.g_geohash,count(sid) as counts from query_events group by query_events.g_geohash, query_events.p_time);
 
 --依据geohash计算 从0开始的行列号
 --获得原始行列号
-create temp table rc_event_t  on commit drop as
+create temp table if not exists rc_event_t  on commit drop as
 (select cluster_events.g_geohash, cluster_events.p_time, cluster_events.counts,(glib.f_quadtree2rowcol(cluster_events.g_geohash))[1] as row_t,(glib.f_quadtree2rowcol(cluster_events.g_geohash))[2] as col_t from cluster_events);
 
 --return query select  rc_event_t.g_geohash::varchar, rc_event_t.p_time::varchar, rc_event_t.counts::integer,row_t::integer,col_t::integer from rc_event_t;
@@ -51,7 +51,7 @@ min_r := (select min(rc_event_t.row_t) from rc_event_t);
  min_c := (select min(rc_event_t.col_t) from rc_event_t);
 
 --获得从0开始的行列号
- return query select rc_event_t.g_geohash::varchar,rc_event_t.p_time::varchar, rc_event_t.counts::integer, rc_event_t.row_t-min_r as row, rc_event_t.col_t-min_c as col from rc_event_t order by rc_event_t.p_time,rc_event_t.g_geohash;
+ return query select rc_event_t.g_geohash::varchar,rc_event_t.p_time::varchar, rc_event_t.counts::integer, rc_event_t.row_t-min_r as row_zero, rc_event_t.col_t-min_c as col_zero from rc_event_t order by rc_event_t.p_time,rc_event_t.g_geohash;
 
 	
 
@@ -60,6 +60,7 @@ $BODY$;
 
 ALTER FUNCTION crimestat.datacluster(json, json, integer)
     OWNER TO postgres;
+
 
 
 
