@@ -1,0 +1,74 @@
+-- FUNCTION: crimestat.gridbuild(json, json, integer)
+
+-- DROP FUNCTION crimestat.gridbuild(json, json, integer);
+
+CREATE OR REPLACE FUNCTION crimestat.gridbuild(
+	time_extend json,
+	space_extend json,
+	layerth integer)
+    RETURNS TABLE(p_time character varying, tt integer, ttt integer, counts integer) 
+    LANGUAGE 'plpgsql'
+
+    COST 100
+    VOLATILE 
+    ROWS 1000
+AS $BODY$
+declare
+start_time varchar:= time_extend->'start_time';
+end_time varchar:= time_extend->'end_time';
+
+max_zero_row integer;
+max_zero_col integer;
+begin
+
+--构建完整的行\列序列
+max_zero_row := (select max(d.row_zero) from crimestat.datacluster(time_extend,space_extend,layerth) as d);
+max_zero_col := (select max(d.col_zero) from crimestat.datacluster(time_extend,space_extend,layerth) as d);
+
+create temp table row_series on commit drop as (select generate_series as row_series from generate_series(0,max_zero_row,1));
+
+create temp table col_series on commit drop as (select generate_series as col_series from generate_series(0,max_zero_col,1));
+
+--构建完整的时间序列
+create temp table time_series on commit drop as (
+	select to_char(generate_series,'YYYYMMDDHH24')::varchar as time_series from generate_series(to_timestamp(start_time,'YYYYMMDDHH24'), to_timestamp(end_time,'YYYYMMDDHH24'),'1 hour'));
+
+create temp table full_series on commit drop as (
+ select time_series,row_series,col_series from row_series cross join col_series cross join time_series order by time_series,row_series,col_series);
+
+	
+	return query	select  time_series,row_series,col_series, COALESCE(d.counts, 0) from full_series f left outer join  crimestat.datacluster(time_extend,space_extend,layerth) d on f.time_series = d.p_time and f.row_series = d.row_zero and f.col_series = d.col_zero;
+
+end;
+$BODY$;
+
+ALTER FUNCTION crimestat.gridbuild(json, json, integer)
+    OWNER TO postgres;
+
+
+
+查询语句
+
+select * from crimestat.gridbuild('{
+
+        "end_time": 2012123123,
+
+        "timestep": "1",
+
+        "start_time": 2012010100
+
+    }'::json, '{
+
+        "east": 121.382326,
+
+        "west": 119.914598,
+
+        "north": 32.036541,
+
+        "south": 30.760336
+
+    }'::json,10) limit 100;
+
+
+
+
