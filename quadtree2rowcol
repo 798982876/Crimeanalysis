@@ -1,0 +1,80 @@
+-- FUNCTION: glib.f_quadtree2rowcol(character varying)
+
+-- DROP FUNCTION glib.f_quadtree2rowcol(character varying);
+
+CREATE OR REPLACE FUNCTION glib.f_quadtree2rowcol(
+	quadtree character varying)
+    RETURNS integer[]
+    LANGUAGE 'plpgsql'
+
+    COST 100
+    VOLATILE 
+AS $BODY$DECLARE
+
+quadtree_t varchar := substring( quadtree from 2 for length(quadtree));
+
+c_t_begin integer :=0;
+r_t_begin integer :=0;
+
+c_t_end integer;
+r_t_end integer;
+
+len_t  integer;
+i integer;
+
+-- grid_row integer; 
+-- grid_col integer;
+
+str varchar;
+BEGIN
+  len_t := length(quadtree_t);
+  c_t_end := power(2, len_t);
+  r_t_end := power(2, len_t);
+ 
+
+  i := 1;
+  WHILE (i <= len_t) LOOP
+    str := substring(quadtree_t from i for 1);
+    CASE str
+      WHEN 'q' THEN
+        BEGIN
+          c_t_end := (c_t_begin + c_t_end)/2;
+          r_t_end := (r_t_begin + r_t_end)/2;
+		      i := i + 1;
+-- 			  raise notice 'qi:%',i;
+        END;
+      WHEN 'r' THEN
+        BEGIN
+          c_t_end := (c_t_begin + c_t_end)/2;
+          r_t_begin := (r_t_begin + r_t_end)/2;
+		      i := i + 1;
+-- 			  raise notice 'ri:%',i;
+        END;
+      WHEN 't' THEN
+        BEGIN
+          c_t_begin := (c_t_begin + c_t_end)/2;
+          r_t_end := (r_t_begin + r_t_end)/2;
+		      i := i + 1;
+-- 		  raise notice 'ti:%',i;
+
+        END;
+      WHEN 's' THEN
+        BEGIN
+          c_t_begin := (c_t_begin + c_t_end)/2;
+          r_t_begin := (r_t_begin + r_t_end)/2;
+		      i := i + 1;
+-- 			  raise notice 'si:%',i;
+
+        END;
+	  ELSE
+    END CASE;
+  END LOOP;
+--   grid_row := r_t_end;
+--   grid_col := c_t_end;
+  return array[r_t_end, c_t_end];
+END;
+  
+$BODY$;
+
+ALTER FUNCTION glib.f_quadtree2rowcol(character varying)
+    OWNER TO postgres;
