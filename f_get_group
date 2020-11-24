@@ -1,0 +1,45 @@
+--获得原始行列号
+CREATE OR REPLACE FUNCTION crimestat.f_get_group(
+	start_time timestamp without time zone,
+	end_time timestamp without time zone,
+	space_extend double precision[],
+	layerth integer)
+    RETURNS TABLE(g_geohash character varying, p_time timestamp without time zone, counts integer, g_row integer, g_col integer) 
+    LANGUAGE 'plpgsql'
+
+    COST 100
+    VOLATILE 
+    ROWS 1000
+AS $BODY$declare
+
+--space_extend [xmin,ymin,xmax,ymax]
+
+query_space geometry;
+
+begin
+
+query_space := ST_MakeEnvelope(space_extend[1],space_extend[2],space_extend[3],space_extend[4],4326)::geometry;
+
+--获得数据data 在时间范围内 在空间范围内
+
+create temp table if not exists query_events on commit drop as
+
+(
+
+select sid, 时间 as p_time,glib.f_geodetic2quadtree(ST_X(geometry(地理位置))::numeric, ST_Y(geometry(地理位置))::numeric, layerth) as g_geohash
+
+from crimestat.v_incidents where start_time<=时间 and end_time>=时间 and  ST_Covers(query_space,geometry(地理位置)));
+
+--依据 geohash 和 time聚类,并获得原始行列号
+
+ return query select query_events.g_geohash,query_events.p_time,count(sid)::integer as counts,(glib.f_morton_decoding(query_events.g_geohash))[1]::integer as g_row,(glib.f_morton_decoding(query_events.g_geohash))[2]::integer as g_col from query_events group by query_events.g_geohash, query_events.p_time  order by query_events.p_time,query_events.g_geohash;
+
+end;
+$BODY$;
+
+
+查询语句：
+select * from crimestat.f_get_group('2012-01-01 00:00:00','2013-01-01 00:00:00','{119.914598,30.760336,121.382326,32.036541}',10);
+
+
+
