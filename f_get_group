@@ -1,10 +1,14 @@
---获得原始行列号
-CREATE OR REPLACE FUNCTION crimestat.f_get_group(
+-- FUNCTION: crimestat.f_get_resnet_data(timestamp without time zone, timestamp without time zone, integer, double precision[], integer)
+
+-- DROP FUNCTION crimestat.f_get_resnet_data(timestamp without time zone, timestamp without time zone, integer, double precision[], integer);
+
+CREATE OR REPLACE FUNCTION crimestat.f_get_resnet_data(
 	start_time timestamp without time zone,
 	end_time timestamp without time zone,
+	time_step integer,
 	space_extend double precision[],
 	layerth integer)
-    RETURNS TABLE(g_geohash character varying, p_time timestamp without time zone, counts integer, g_row integer, g_col integer) 
+    RETURNS TABLE(g_geohash character varying, time_id integer, counts integer, g_row integer, g_col integer) 
     LANGUAGE 'plpgsql'
 
     COST 100
@@ -26,20 +30,32 @@ create temp table if not exists query_events on commit drop as
 
 (
 
-select sid, 时间 as p_time,glib.f_geodetic2quadtree(ST_X(geometry(地理位置))::numeric, ST_Y(geometry(地理位置))::numeric, layerth) as g_geohash
+select sid, 
+	ceil((EXTRACT(EPOCH FROM 时间) -
+        EXTRACT(EPOCH FROM start_time))
+        / 60 / 60 /time_step)::integer as time_id,
+	glib.f_geodetic2quadtree(ST_X(geometry(地理位置))::numeric, ST_Y(geometry(地理位置))::numeric, layerth) as g_geohash
 
 from crimestat.v_incidents where start_time<=时间 and end_time>=时间 and  ST_Covers(query_space,geometry(地理位置)));
 
 --依据 geohash 和 time聚类,并获得原始行列号
 
- return query select query_events.g_geohash,query_events.p_time,count(sid)::integer as counts,(glib.f_morton_decoding(query_events.g_geohash))[1]::integer as g_row,(glib.f_morton_decoding(query_events.g_geohash))[2]::integer as g_col from query_events group by query_events.g_geohash, query_events.p_time  order by query_events.p_time,query_events.g_geohash;
+-- create temp table if not exists cluster_events on commit drop as
+--return query select query_events.p_time,query_events.g_geohash,时间 from query_events,crimestat.v_incidents where crimestat.v_incidents.sid =query_events.sid order by 时间;
+
+return query select query_events.g_geohash,query_events.time_id,count(query_events.sid)::integer as counts,(glib.f_morton_decoding(query_events.g_geohash))[1]::integer as g_row,(glib.f_morton_decoding(query_events.g_geohash))[2]::integer as g_col from query_events group by query_events.g_geohash, query_events.time_id  order by query_events.time_id,query_events.g_geohash;
+
+--获得从0开始的行列号
+
+--return query select cluster_events.g_geohash::varchar,cluster_events.p_time::varchar,cluster_events.counts::integer,cluster_events.row_t-minrc.min_r as row_zero, cluster_events.col_t-minrc.min_c as col_zero from (select min(cluster_events.row_t) as min_r, min(cluster_events.col_t) as min_c from cluster_events) as minrc,cluster_events  order by cluster_events.p_time,cluster_events.g_geohash;
 
 end;
 $BODY$;
 
 
 查询语句：
-select * from crimestat.f_get_group('2012-01-01 00:00:00','2013-01-01 00:00:00','{119.914598,30.760336,121.382326,32.036541}',10);
+
+select * from crimestat.f_get_resnet_data('2012-01-01 00:00:00','2013-01-01 00:00:00',2,'{119.914598,30.760336,121.382326,32.036541}',10);
 
 
 
